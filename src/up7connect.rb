@@ -3,13 +3,9 @@
 #
 # UP7Connect
 # ----------
-# Author  : Baptiste Fontaine
-#          <batifon@yahoo.fr>
-#          bfontaine.net
-#
-# Version : 0.1b
-# License : GPL v3
-# http://www.gnu.org/licenses/gpl.txt
+# Repository: github.com/bfontaine/UP7Connect
+# License: MIT
+# Author: Baptiste Fontaine
 #
 
 require 'uri'
