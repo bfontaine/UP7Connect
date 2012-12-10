@@ -10,47 +10,12 @@
 
 require 'uri'
 require 'net/http'
+require 'yaml'
 
-class Up7FileDoesNotExists < Exception
+class FileDoesNotExists < Exception
 end
 
 module Up7Connect
-
-    @@OS = lambda {
-            return :linux if (/linux/i =~ RUBY_PLATFORM)
-            return :mac_os if (/darwin/i =~ RUBY_PLATFORM)
-            return :bsd if (/bsd/i =~ RUBY_PLATFORM)
-            return :ms_windows if (/win(32|64)/i =~ RUBY_PLATFORM)
-            :default
-    }.call
-
-    @@UP7C_VERSION = '0.1b'
-
-    @@LOGIN_FILEPATH = { :linux => '~/.up7connect.conf',
-                         :mac_os => '~/.up7connect.conf',
-                         :bsd => '~/.up7connect.conf',
-                         :default => '~/.up7connect.conf',
-                         :ms_windows => '.\\.up7connect.conf' # TODO
-                       }
-    @@LOGIN_JOIN = '__up7c__'
-
-    @@ESSID = 'up7d'
-    @@LOGIN_PAGE = 'https://1.1.1.1/login.html'
-    @@UA = "UP7Connect (v#{@@UP7C_VERSION})"
-    # &ap_mac=00:11:22:33:44
-    @@REFERER_HEADER = 'https://1.1.1.1/fs/customwebauth/login.html?'\
-                       +'switch_url=https://1.1.1.1/login.html&wlan=up7d'
-
-    @@OPEN_TIMEOUT = 5
-    
-    @@PING_TIMEOUT = 2
-    @@PING_COUNT = 5
-    @@PING_SERVER = 'kernel.org'
-    
-    @@verbose_mode = true
-    @@debug_mode = false
-
-    attr_accessor :verbose_mode, :debug_mode
 
     @@USAGE = <<-EOS
 
@@ -64,59 +29,108 @@ Usage : ./up7connect.rb <option>
             Print this help and exit.
 
         -v,-version,--version
-            Print UP7Connect version (#{@@UP7C_VERSION}) and exit.
+            Print UP7Connect version and exit.
 
 Without <action> : Connect to 'up7d' wireless network, using saved login/password.
     EOS
 
-    def Up7Connect.loginfile_exists?
-        return File.exist?(File.expand_path(@@LOGIN_FILEPATH[@@OS]))
-    end
+    def self::os()
 
-    def Up7Connect.getlogin
-        if (!loginfile_exists?)
-            puts 'D: login/password file missing.' if (debug_mode)
-            raise Up7FileDoesNotExists
+        oses = {
+            :linux   => [ 'linux' ],
+            :osx     => [ 'darwin' ],
+            :bsd     => [ 'bsd' ],
+            :windows => [ 'win32', 'win64' ]
+        }
+
+        oses.each do |key, strs|
+
+            strs.each do |s|
+                return key unless RUBY_PLATFORM.index(s).nil?
+            end
+
         end
-        file = File.open(File.expand_path(@@LOGIN_FILEPATH[@@OS]), 'r')
-        content = file.read.gsub(/([^a-z])/) {|e| ((e.ord)-33).to_s}
-        file.close
-        s1 = ''
-        s2 = ''
-        content.split(/\D/).each {|e| s1 << e.to_i.chr}
-        s1 = s1.split /\D/
-            s1.each {|e| s2 << e.to_i.chr}
-        s2.split @@LOGIN_JOIN
+
     end
 
-    def Up7Connect.setlogin(u,p)
-        s = [u,p].join @@LOGIN_JOIN
-        j1 = (rand(122-97)+97).chr
-        j2 = (rand(122-97)+97).chr
-        e1 = []
-        e2 = []
-        s.each_byte {|c| e1 << c.ord}
-        e1.join(j1).each_byte {|c| e2 << c.ord}
-        file = File.open(File.expand_path(@@LOGIN_FILEPATH[@@OS]), 'w')
-        file.write e2.join(j2).gsub(/(\d)/) {|e| (33+e.to_i).chr}
-        file.chmod(0600) if ([:linux,:bsd,:max_os].include? @@OS)
-        file.close
+    def self::version()
+        '0.1.0b'
     end
 
-    def Up7Connect.asklogin
+    def self::login_filepath(os=nil)
+
+        os ||= self::os
+
+        paths = {
+            '~/.up7connect.conf'  => [ :linux, :osx, :bsd ],
+            '.\\.up7connect.conf' => [ :windows ] # TODO
+        }
+
+        paths.each do |path, oses|
+            return File.expand_path(path) if oses.include? os
+        end
+
+        return File.expand_path('./.up7connect.conf') # default
+    end
+
+    def self::login=( credentials )
+
+        credentials = credentials.take(2)
+        filename = self::login_filepath
+
+        File.open(filename, 'w') do |f|
+            f.write YAML.dump(credentials)
+        end
+
+        File.chmod(0600, filename)
+
+        credentials
+    end
+
+    def self::login()
+
+        filename = self::login_filepath
+
+        return nil unless File.exist?(filename)
+
+        YAML.load(File.read(filename))
+    end
+
+    def self::asklogin
         print 'Login: '
         u = gets.chomp
         print 'Password: '
         p = gets.chomp
-        setlogin(u,p)
+        self::login = [u, p]
+    end
+
+    def self::wlan?
+        
+        os = self::os
+
+        if os === :linux
+            scan = `iwlist wlan0 scan last`;
+            essid = /ESSID:"([^"]+)"/.match(scan)#.captures
+
+            return false if (essid.nil? || (essid.captures.length == 0))
+            
+            return (essid.captures[0] === 'up7c')
+
+        elsif os === :bsd
+
+            #TODO
+
+        end
+
+        return true # TODO
     end
 
     # TODO see [FR] :
     # http://www.crium.univ-metz.fr/reseau/wifi/faq/diagnostic.html
     #def Up7Connect.is_connected?
         #begin
-            #puts "D: trying to ping #{@@PING_COUNT} times #{@@PING_SERVER}" if (@@debug_mode)
-            #`ping -q -c #{@@PING_COUNT} -W #{@@PING_TIMEOUT} #{@@PING_SERVER}`
+            #puts "D: trying to ping 5 times kernel.org" if (@@debug_mode)
+            #`ping -q -c 5 -W 2 kernel.org`
         #rescue Errno::ENETUNREACH
             #puts 'D: Error, Net Unreachable' if (@@debug_mode)
             #return false
@@ -127,24 +141,11 @@ Without <action> : Connect to 'up7d' wireless network, using saved login/passwor
         #return ($?.exitstatus === 0)
     #end
 
-    def Up7Connect.wlan_is_present?
-        if @@OS === :linux
-            scan = `iwlist wlan0 scan last`;
-            essid = /ESSID:"([^"]+)"/.match(scan)#.captures
-            return false if (essid.nil? || (essid.captures.length == 0))
-            return (essid.captures[0] === @@ESSID)
-        elsif @@OS === :bsd
-            #TODO
-        end
+    def self::connect(verbose=true)
 
-        return true # quick'n'dirty solution
-    end
+        user, passwd = self::login
 
-    def Up7Connect.connect
-
-        user, passwd = getlogin
-
-        uri = URI(@@LOGIN_PAGE)
+        uri = URI('https://1.1.1.1/login.html')
 
         req = Net::HTTP::Post.new(uri.path)
         req.set_form_data(
@@ -154,20 +155,25 @@ Without <action> : Connect to 'up7d' wireless network, using saved login/passwor
             'username' => user,
             'password' => passwd
         )
-        req['User-Agent'] = @@UA
-        req['Referer'] = @@REFERER_HEADER
+        req['User-Agent'] = "UP7Connect (v#{self::version})"
+
+        # &ap_mac=00:11:22:33:44
+        req['Referer'] = 'https://1.1.1.1/fs/customwebauth/login.html?' \
+                       +'switch_url=https://1.1.1.1/login.html&wlan=up7d'
 
         begin
             resp = Net::HTTP.start(uri.host, uri.port,
                                    :use_ssl => (uri.scheme == 'https'),
                                    :verify_mode => OpenSSL::SSL::VERIFY_NONE,
-                                   :open_timeout => @@OPEN_TIMEOUT
-                                  ) { |http| http.request(req) }
+                                   :open_timeout => 5) do |http|
+                http.request(req)
+            end
+
         rescue Timeout::Error
-            puts 'Timeout.' if (@@verbose_mode || @@debug_mode)
+            puts 'Timeout.' if verbose
             return false
         rescue Errno::ENETUNREACH
-            puts 'Net unreachable.' if (@@verbose_mode || @debug_mode)
+            puts 'Net unreachable.' if verbose
             return false
         else
             if (resp.code != '200' && resp.code != 200)
@@ -176,29 +182,29 @@ Without <action> : Connect to 'up7d' wireless network, using saved login/passwor
             end
 
             if (resp.body.include? 'You are already logged in.')
-                puts 'Already connected.' if (@@verbose_mode || @@debug_mode)
+                puts 'Already connected.' if verbose
                 return true
             end
             # "The User Name and Password combination you have
             # entered is invalid. Please try again."
             if (resp.body.include? 'have entered is invalid. Please try again.')
-                puts 'Bad login/password.' if (@@verbose_mode || @@debug_mode)
+                puts 'Bad login/password.' if verbose
                 return false
             end
 
-            puts 'Connection ok.' if (@@verbose_mode || @@debug_mode)
+            puts 'Connection ok.' if verbose
             return true
         end
     end
 
     def Up7Connect.main
-        if (!loginfile_exists?)
+        if self::login.nil?
             puts 'Missing login/password file. Please fill your informations.'
-            asklogin
+            self::asklogin
         end
 
-        if (!Up7Connect.wlan_is_present?)
-            puts "It seems that #{@@ESSID} ESSID is not accessible here..."
+        if (!Up7Connect.wlan?)
+            puts "It seems that up7c ESSID is not accessible here..."
             exit -1
         end
         #if (Up7Connect.is_connected?)
@@ -210,7 +216,7 @@ Without <action> : Connect to 'up7d' wireless network, using saved login/passwor
 end
 
 
-if /up7connect\.rb/ =~__FILE__
+if $0 == __FILE__
     if (ARGV.length == 0)
         Up7Connect.main
     else
@@ -223,12 +229,10 @@ if /up7connect\.rb/ =~__FILE__
             Up7Connect.asklogin
 
         when '-v','-version','--version' # version
-            puts "UP7Connect v#{Up7Connect.UP7C_VERSION}"
+            puts "UP7Connect v#{Up7Connect.version}"
 
         when '-q','-quiet','--quiet' # quiet mode
-            Up7Connect.verbose_mode = false
-            Up7Connect.debug_mode = false
-            Up7Connect.main
+            Up7Connect.main(false)
         else
             puts "#{ARGV[0]} : not a valid option"
             puts Up7Connect.USAGE
