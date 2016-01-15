@@ -11,6 +11,7 @@
 require 'uri'
 require 'net/http'
 require 'yaml'
+require 'openssl'
 
 class FileDoesNotExists < Exception
 end
