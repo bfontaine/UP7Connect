@@ -1,4 +1,4 @@
-#! /usr/bin/ruby1.9.1
+#! /usr/bin/env ruby
 
 #
 # UP7Connect
@@ -158,8 +158,8 @@ Without <action> : Connect to 'up7d' wireless network, using saved login/passwor
         req['User-Agent'] = "UP7Connect (v#{self::version})"
 
         # &ap_mac=00:11:22:33:44
-        req['Referer'] = 'https://1.1.1.1/fs/customwebauth/login.html?' \
-                       +'switch_url=https://1.1.1.1/login.html&wlan=up7d'
+        req['Referer'] = 'https://1.1.1.1/fs/customwebauth/login.html?' + \
+                        'switch_url=https://1.1.1.1/login.html&wlan=up7d'
 
         begin
             resp = Net::HTTP.start(uri.host, uri.port,
@@ -205,7 +205,7 @@ Without <action> : Connect to 'up7d' wireless network, using saved login/passwor
 
         if (!Up7Connect.wlan?)
             puts "It seems that up7c ESSID is not accessible here..."
-            exit -1
+            exit(-1)
         end
         #if (Up7Connect.is_connected?)
         #    puts 'Already connected.' if (@@verbose_mode || @@debug_mode)
