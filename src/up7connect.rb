@@ -136,7 +136,7 @@ Without <action> : Connect to 'up7d' wireless network, using saved login/passwor
 
     def main(verbose=true)
       unless Up7Connect.wlan?
-        puts "It seems that up7c ESSID is not accessible here..."
+        puts "It seems that up7d ESSID is not accessible here..."
         exit 1
       end
       exit (connect(verbose) ? 0 : 1)
